@@ -9,6 +9,7 @@ MAX_PAYLOAD = 0x53
 BAUD_SCAN = [57600, 115200, 19200]
 
 MODES = {
+    "mode0":   0x00,
     "debug":   0x44,
     "config":  0x3C,
     "test":    0x38,
@@ -18,28 +19,6 @@ MODES = {
     "mode7":   0xD7,
     "mode8":   0xE9,
 }
-
-QUEUE_OWNER = [
-    0x00,
-    0x01,
-    0x02,
-    0x03, 0x03, 0x03,
-    0x04, 0x04,
-    0x05,
-    0x06,
-    0x07,
-    0x09, 0x09,
-    0x08, 0x08,
-    0x0a, 0x0a,
-    0x10,
-    0x0b,
-    0x14,
-    0x12,
-    0x0c,
-    0x0d,
-    0x13,
-    0x20, 0x20, 0x20
-]
 
 TASK_NAME = {
     0x00: "mac",
@@ -250,12 +229,15 @@ class Session:
         return self
 
     def send_packet(self, data):
+        print("[tx_pkt]", (bytes([self.tx_seq]) + bytes(data)).hex())
         ok = self.send(bytes([self.tx_seq]) + bytes(data))
         self.tx_seq = (self.tx_seq + 1) & 0xFF
         return ok
 
     def recv_packet(self, timeout=1.0):
         frame = self.recv(timeout)
+        if not frame: return None
+        print("[rx_pkt]", frame.hex(), "=>", frame[1:].hex())
         return frame[1:] if frame else None
 
     def close(self):
@@ -276,7 +258,7 @@ def reassemble(frames):
 
 
 class Monitor:
-    def __init__(self, session):
+    def __init__(self, session: Session):
         self.s = session
         self.running = False
 
@@ -389,7 +371,7 @@ def cmd_read(args, mon: Monitor):
         text = "".join(chr(c) if 32 <= c < 127 else "." for c in row)
         print(f"{args.addr + off:08x}  {row.hex(' '):<47}  {text}")
 
-def cmd_write(args, mon):
+def cmd_write(args, mon: Monitor):
     before = mon.read_memory(args.addr, len(args.values))
     print(f"before: {before.hex(' ')}")
 
@@ -399,7 +381,7 @@ def cmd_write(args, mon):
     after = mon.read_memory(args.addr, len(args.values))
     print(f"after:  {after.hex(' ')}")
 
-def cmd_trace(args, mon):
+def cmd_trace(args, mon: Monitor):
     queues = args.queue or [0x06, 0x07, 0x08, 0x09, 0x0a]
     tasks = args.task or []
 
@@ -434,7 +416,8 @@ def cmd_trace(args, mon):
             else:
                 cmd, body = reassemble([pkt])
 
-            print(cmd, body)
+            if cmd != 0xd4:
+                print(f"{hex(cmd)}", "=>", body.hex())
     except KeyboardInterrupt:
         pass
     finally:
